@@ -61,3 +61,11 @@ python sigaa_direto.py \
 
 - Componentes aceitas: `ACC I`, `ACC II`, `TCC I`, `TCC II`.
 - O script direto usa seletores por texto/label com fallback. Mudancas visuais no SIGAA podem exigir ajuste de seletores.
+
+
+Exemplo:
+Para ver navegador remova --headless
+
+ python sigaa_direto.py --matricula 202285640027 --periodo 2026.1 --polo "LIMOEIRO DO AJURU" --componente "ACC I" --headless --executar 2>&1 | head -350; python sigaa_direto.py --matricula 202285640027 --periodo 2026.1 --polo "LIMOEIRO DO AJURU" --componente "ACC II" --headless --executar 2>&1 | head -350; python sigaa_direto.py --matricula 202285640027 --periodo 2026.1 --polo "LIMOEIRO DO AJURU" --componente "ACC III" --headless --executar 2>&1 | head -350; python sigaa_direto.py --matricula 202285640027 --periodo 2026.1 --polo "LIMOEIRO DO AJURU" --componente "ACC IV" --headless --executar 2>&1 | head -350;
+
+python sigaa_direto.py --matricula 202285940019 --periodo 2026.1 --polo "OEIRAS DO PARÁ" --componente "ACC I" --headless --executar 2>&1 | head -350; python sigaa_direto.py --matricula 202285940019 --periodo 2026.1 --polo "OEIRAS DO PARÁ" --componente "ACC II" --headless --executar 2>&1 | head -350; python sigaa_direto.py --matricula 202285940019 --periodo 2026.1 --polo "OEIRAS DO PARÁ" --componente "ACC III" --headless --executar 2>&1 | head -350; python sigaa_direto.py --matricula 202285940019 --periodo 2026.1 --polo "OEIRAS DO PARÁ" --componente "ACC IV" --headless --executar 2>&1 | head -350;
