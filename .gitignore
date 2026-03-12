@@ -1,0 +1,11 @@
+# Ignore everything by default
+*
+
+# Keep repository config
+!.gitignore
+
+# Keep only essential project scripts/files
+!main.py
+!sigaa_direto.py
+!requirements.txt
+!README.md
