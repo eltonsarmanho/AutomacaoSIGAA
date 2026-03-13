@@ -36,11 +36,11 @@ from dotenv import load_dotenv
 
 # ── Constantes ─────────────────────────────────────────────────────────────────
 
-COMPONENTES_VALIDOS = {"TCC I", "TCC", "TCC II"}
+COMPONENTES_VALIDOS = {"TCC", "TCC I", "TCC II"}
 MAPA_COMPONENTE = {
-    "TCC":   ("TRABALHO DE CONCLUSAO DE CURSO", "TRABALHO DE CONCLUSAO DE CURSO"),
-    "TCC I": ("TRABALHO DE CONCLUSAO DE CURSO", "TRABALHO DE CONCLUSAO DE CURSO I"),
-    "TCC II":("TRABALHO DE CONCLUSAO DE CURSO", "TRABALHO DE CONCLUSAO DE CURSO II"),
+    "TCC": ("TRABALHO DE CONCLUSÃO DE CURSO", "TRABALHO DE CONCLUSAO DE CURSO"),
+    "TCC I": ("TRABALHO DE CONCLUSÃO DE CURSO", "TRABALHO DE CONCLUSAO DE CURSO I"),
+    "TCC II": ("TRABALHO DE CONCLUSÃO DE CURSO", "TRABALHO DE CONCLUSAO DE CURSO II"),
 }
 
 # ── Data classes ───────────────────────────────────────────────────────────────

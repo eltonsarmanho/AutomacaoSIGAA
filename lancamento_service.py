@@ -63,7 +63,7 @@ class LancamentoService:
     ValueError — se o componente informado não for válido.
     """
 
-    COMPONENTES_VALIDOS = {"ACC I", "ACC II", "ACC III", "ACC IV", "TCC I", "TCC II"}
+    COMPONENTES_VALIDOS = {"ACC I", "ACC II", "ACC III", "ACC IV", "TCC", "TCC I", "TCC II"}
 
     def __init__(
         self,
@@ -72,6 +72,7 @@ class LancamentoService:
         periodo: str,
         componente: str,
         executar: bool = True,
+        orientador: str | None = None,
     ) -> None:
         componente_upper = componente.strip().upper()
         if componente_upper not in self.COMPONENTES_VALIDOS:
@@ -86,22 +87,27 @@ class LancamentoService:
         self.periodo = periodo.strip()
         self.componente = componente_upper
         self.executar = executar
+        self.orientador = orientador
 
     # ── Helpers internos ──────────────────────────────────────────────────────
 
     def _args_matricular(self) -> SimpleNamespace:
         """Constrói o namespace de argumentos esperado por executar_fluxo_direto."""
-        return SimpleNamespace(
-            matricula=self.matricula,
-            polo=self.polo,
-            periodo=self.periodo,
-            componente=self.componente,
-            curso=None,           # usa polo para localizar o curso no dropdown
-            atividade_nome=None,  # usa o nome padrão do MAPA_COMPONENTE
-            executar=self.executar,
-            headless=True,        # sem janela de navegador — obrigatório para backend
-            manter_aberto=False,
-        )
+        args_dict = {
+            "matricula": self.matricula,
+            "polo": self.polo,
+            "periodo": self.periodo,
+            "componente": self.componente,
+            "curso": None,           # usa polo para localizar o curso no dropdown
+            "atividade_nome": None,  # usa o nome padrão do MAPA_COMPONENTE
+            "executar": self.executar,
+            "headless": True,        # sem janela de navegador — obrigatório para backend
+            "manter_aberto": False,
+        }
+        if self.componente.startswith("TCC"):
+            args_dict["orientador"] = self.orientador
+            
+        return SimpleNamespace(**args_dict)
 
     def _args_consolidar(self, conceito: str) -> SimpleNamespace:
         """Constrói o namespace de argumentos esperado por executar_consolidacao."""
@@ -123,7 +129,7 @@ class LancamentoService:
         """
         Realiza a matrícula do aluno no componente via SIGAA.
 
-        Fluxo interno (sigaa_Matricular.py):
+        Fluxo interno:
           Login → Selecionar Período → Portal Coord. Graduação →
           Selecionar Curso/Polo → Menu Atividades > Matricular →
           Buscar Discente → Selecionar Componente → Confirmar
@@ -134,7 +140,18 @@ class LancamentoService:
             sucesso=True  → matrícula realizada (ou simulada em dry-run)
             sucesso=False → falha, com mensagem e detalhes do erro
         """
-        from sigaa_Matricular import executar_fluxo_direto  # import local: evita carregar Playwright desnecessariamente
+        if self.componente.startswith("TCC"):
+            # Importa script específico de TCC
+            from sigaa_Matricular_TCCI import executar_fluxo_direto
+            if not getattr(self, "orientador", None):
+                 return ResultadoOperacao(
+                    sucesso=False,
+                    mensagem="Erro na matrícula: O campo 'orientador' é obrigatório para matrículas de TCC.",
+                    detalhes=["O campo 'orientador' não foi fornecido no LancamentoService para um componente TCC."],
+                )
+        else:
+            # Importa script genérico ACC
+            from sigaa_Matricular import executar_fluxo_direto
 
         args = self._args_matricular()
         try:
@@ -158,7 +175,7 @@ class LancamentoService:
         """
         Consolida a matrícula do aluno atribuindo o conceito informado.
 
-        Fluxo interno (sigaa_Consolidar.py):
+        Fluxo interno:
           Login → Selecionar Período → Portal Coord. Graduação →
           Selecionar Curso/Polo → Menu Atividades > Consolidar Matrículas →
           Localizar Discente + Componente → Selecionar Conceito → Confirmar
@@ -174,7 +191,13 @@ class LancamentoService:
             sucesso=True  → consolidação realizada (ou simulada em dry-run)
             sucesso=False → falha, com mensagem e detalhes do erro
         """
-        from sigaa_Consolidar import executar_consolidacao  # import local: evita carregar Playwright desnecessariamente
+        
+        if self.componente.startswith("TCC"):
+            # Importa script específico de TCC
+            from sigga_Consolidar_TCCI import executar_consolidacao
+        else:
+            # Importa script genérico ACC
+            from sigaa_Consolidar import executar_consolidacao
 
         args = self._args_consolidar(conceito)
         try:

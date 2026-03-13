@@ -32,7 +32,12 @@ from dotenv import load_dotenv
 
 # ── Constantes ─────────────────────────────────────────────────────────────────
 
-COMPONENTE_NOME = "TRABALHO DE CONCLUSAO DE CURSO I"
+COMPONENTES_VALIDOS = {"TCC", "TCC I", "TCC II"}
+MAPA_COMPONENTE = {
+    "TCC": "TRABALHO DE CONCLUSAO DE CURSO",
+    "TCC I": "TRABALHO DE CONCLUSAO DE CURSO I",
+    "TCC II": "TRABALHO DE CONCLUSAO DE CURSO II",
+}
 CONCEITO_PADRAO = "E"
 
 # ── Data classes ───────────────────────────────────────────────────────────────
@@ -49,10 +54,15 @@ class ConfigSigaa:
 
 
 @dataclass
-class EntradaConsolidacao:
+class EntradaDados:
     matricula: str
     periodo: str
     polo: str
+    componente: str
+    curso: str | None = None
+    executar: bool = True
+    headless: bool = False
+    manter_aberto: bool = False
 
 
 # ── Helpers reutilizados ───────────────────────────────────────────────────────
@@ -544,17 +554,28 @@ async def executar_consolidacao(args: argparse.Namespace) -> None:
         ) from err
 
     cfg = ler_config_env()
-    entrada = EntradaConsolidacao(
+    entrada = EntradaDados(
         matricula=args.matricula,
         periodo=args.periodo,
         polo=args.polo,
+        componente=args.componente,
+        curso=getattr(args, "curso", None),
+        executar=getattr(args, "executar", True),
+        headless=getattr(args, "headless", False),
+        manter_aberto=getattr(args, "manter_aberto", False),
     )
+
+    componente_upper = entrada.componente.strip().upper()
+    if componente_upper not in MAPA_COMPONENTE:
+        raise ValueError(f"Componente inválido: {entrada.componente}")
+
+    atividade_nome = MAPA_COMPONENTE[componente_upper]
 
     base = base_sigaa_url(cfg.sigaa_url)
 
     print("[1/8] Abrindo navegador e SIGAA...")
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=args.headless)
+        browser = await p.chromium.launch(headless=entrada.headless)
         context = await browser.new_context()
         page = await context.new_page()
 
@@ -621,7 +642,7 @@ async def executar_consolidacao(args: argparse.Namespace) -> None:
         # ── SELEÇÃO DE CURSO ───────────────────────────────────────────────
         print("[5/8] Selecionando curso pelo polo...")
         await page.wait_for_load_state("domcontentloaded")
-        alvo_curso = args.curso if args.curso else entrada.polo
+        alvo_curso = entrada.curso if entrada.curso else entrada.polo
         selecionou = await selecionar_opcao_em_dropdown(page, alvo_curso)
         if selecionou:
             try:
@@ -656,14 +677,14 @@ async def executar_consolidacao(args: argparse.Namespace) -> None:
         await page.wait_for_timeout(1000)
 
         # ── SELECIONAR DISCENTE + COMPONENTE NA LISTA ──────────────────────
-        print(f"[7/8] Selecionando discente {entrada.matricula} em '{COMPONENTE_NOME}'...")
-        if not await _selecionar_discente_componente(page, entrada.matricula, COMPONENTE_NOME):
+        print(f"[7/8] Selecionando discente {entrada.matricula} em '{atividade_nome}'...")
+        if not await _selecionar_discente_componente(page, entrada.matricula, atividade_nome):
             try:
                 await page.screenshot(path="/tmp/sigaa_consolidar_tcci_discente_fail.png")
             except Exception:
                 pass
             raise RuntimeError(
-                f"Nao encontrou matricula {entrada.matricula} sob componente '{COMPONENTE_NOME}' na lista."
+                f"Nao encontrou matricula {entrada.matricula} sob componente '{atividade_nome}' na lista."
             )
 
         try:
@@ -753,7 +774,7 @@ async def executar_consolidacao(args: argparse.Namespace) -> None:
         # ── CONFIRMAÇÃO ────────────────────────────────────────────
         print("[-] Confirmacao final...")
 
-        if args.executar:
+        if entrada.executar:
             # Clicar em Confirmar/Consolidar
             clicou = await clicar_primeiro_visivel(
                 page,
@@ -783,7 +804,7 @@ async def executar_consolidacao(args: argparse.Namespace) -> None:
         else:
             print("[DRY-RUN] Parado antes de Confirmar. NAO enviada a confirmacao final.")
 
-        if args.manter_aberto:
+        if entrada.manter_aberto:
             print("[INFO] Navegador mantido aberto. Pressione Enter para fechar...")
             input()
 
@@ -797,6 +818,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Consolida matricula em TCC I no SIGAA"
     )
+
+    parser.add_argument(
+        "--componente",
+        required=True,
+        choices=["TCC", "TCC I", "TCC II"],
+        help="Tipo de TCC (ex: 'TCC', 'TCC I', 'TCC II')",
+    )
+
     parser.add_argument("--matricula", required=True, help="Matricula do aluno")
     parser.add_argument("--periodo", required=True, help="Periodo academico (ex: 2026.1)")
     parser.add_argument("--polo", required=True, help="Polo (usado para selecionar curso)")
