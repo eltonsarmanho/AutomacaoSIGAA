@@ -30,11 +30,14 @@ from pathlib import Path
 # Componentes válidos: ACC I, ACC II, ACC III, ACC IV, TCC I, TCC II
 # ──────────────────────────────────────────────────────────────────────────────
 LOTE: list[list] = [
-    [202285640031, "Limoeiro do Ajuru", "2026.1", "ACC"],
-    #[202285640010, "Limoeiro do Ajuru", "2026.1", "ACC"],  
-    #[202285940015, "Oeiras do Pará", "2026.1", "ACC"],
-    [202285940012, "Oeiras do Pará", "2026.1", "ACC"],
-    [202285940021, "Oeiras do Pará", "2026.1", "ACC"]
+    
+    [202285640010, "LIMOEIRO DO AJURU", "2026.1", "ACC"],  
+    [202285640008, "LIMOEIRO DO AJURU", "2026.1", "ACC"],
+    [202285640009, "LIMOEIRO DO AJURU", "2026.1", "ACC"],
+    [202285640022, "LIMOEIRO DO AJURU", "2026.1", "ACC"],
+    [202285640027, "LIMOEIRO DO AJURU", "2026.1", "ACC"],
+    [202285640026, "LIMOEIRO DO AJURU", "2026.1", "ACC"],
+    
    
 ]
 
