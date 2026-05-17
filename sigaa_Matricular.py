@@ -274,8 +274,8 @@ async def clicar_seta_selecao_discente(page, matricula: str) -> bool:
             except Exception:
                 pass
 
-            # Prioridade 1: input[type='image'] (a seta de selecao)
-            seta = linha.locator("input[type='image']").first
+            # Prioridade 1: POST #5 confirmou name="form:selecionarDiscente" (input type=image)
+            seta = linha.locator("input[name='form:selecionarDiscente'], input[type='image']").first
             if await seta.count():
                 print(f"   [DEBUG] Clicando em input[type=image] (seta) na linha da matricula")
                 url_antes = page.url
@@ -747,6 +747,57 @@ async def _clicar_menu_atividades_matricular(page) -> bool:
                 return True
         print(f"   [WARN] Ultimo recurso falhou: {e}")
 
+    # ====================================================================
+    # FALLBACK FINAL: submit direto do form menu_coordenador com jscook_action
+    # POST #3 do rastreador confirmou que o menu funciona via form POST com campo
+    # oculto jscook_action contendo "registroAtividade.iniciarMatricula".
+    # ====================================================================
+    print("   [FALLBACK FINAL] Tentando submit direto via jscook_action (POST #3)...")
+    try:
+        jsf_submit = await page.evaluate("""() => {
+            // Extrair o ViewState atual
+            const vs = (document.querySelector('input[name="javax.faces.ViewState"]') || {}).value || '';
+            // Encontrar a form com id contendo "menu_coordenador"
+            const forms = document.querySelectorAll('form');
+            for (const f of forms) {
+                if (!f.id.includes('menu_coordenador') && f.id !== 'menu_coordenador') continue;
+                // Procurar nos scripts da pagina o jscook_action para iniciarMatricula
+                const scripts = document.querySelectorAll('script');
+                for (const s of scripts) {
+                    const src = s.textContent || '';
+                    const match = src.match(/([\\w_]+_menu[\\w_]*).*registroAtividade\\.iniciarMatricula/);
+                    if (match) {
+                        const actionVal = f.id + ':A]#{ registroAtividade.iniciarMatricula}';
+                        // Submeter o form
+                        const inp = document.createElement('input');
+                        inp.type = 'hidden'; inp.name = 'jscook_action'; inp.value = actionVal;
+                        f.appendChild(inp);
+                        f.submit();
+                        return 'submitted:' + actionVal;
+                    }
+                }
+                // Fallback: tentar com o id do form diretamente
+                const actionVal = f.id + '_menu:A]#{ registroAtividade.iniciarMatricula}';
+                const inp = document.createElement('input');
+                inp.type = 'hidden'; inp.name = 'jscook_action'; inp.value = actionVal;
+                f.appendChild(inp);
+                f.submit();
+                return 'submitted_fallback:' + actionVal;
+            }
+            return null;
+        }""")
+        if jsf_submit:
+            print(f"   [INFO] jscook_action submit: {jsf_submit}")
+            if await _check_navegou(page, "busca_discente", 8000):
+                print("   [OK] Fallback jscook_action funcionou!")
+                return True
+    except Exception as e:
+        if _is_navigation_error(e):
+            if await _check_navegou(page, "busca_discente", 5000):
+                print("   [OK] Fallback jscook_action funcionou (nav detected)!")
+                return True
+        print(f"   [WARN] Fallback jscook_action falhou: {e}")
+
     print("   [ERRO] Todas as estrategias falharam para Menu Atividades > Matricular.")
     print(f"   [DEBUG] URL atual: {page.url}")
     return False
@@ -839,7 +890,7 @@ async def executar_fluxo_direto(args: argparse.Namespace) -> None:
         # --- PORTAL COORD. GRADUACAO (step 5 do mapeamento) ---
         # Apos selecionar o periodo, o link do portal aparece no menu principal.
         # href="/sigaa/verPortalCoordenadorGraduacao.do" confirmado no step 5.
-        print("[3/9] Abrindo Portal Coord. Graduacao...")
+        print("[4/9] Abrindo Portal Coord. Graduacao...")
         if "coordenador.jsf" not in page.url:
             link_portal = page.locator("a[href*='verPortalCoordenadorGraduacao']").first
             try:
@@ -860,7 +911,7 @@ async def executar_fluxo_direto(args: argparse.Namespace) -> None:
         # A opcao real observada: "SISTEMAS DE INFORMACAO - OEIRAS/CCAME - OEIRAS DO PARÁ"
         # Selecionamos pela correspondencia parcial com o polo.
         # O dropdown tem onchange="submit()" portanto a pagina recarrega automaticamente.
-        print("[4/9] Selecionando curso pelo polo...")
+        print("[5/9] Selecionando curso pelo polo...")
         await page.wait_for_load_state("domcontentloaded")
         alvo_curso = args.curso if args.curso else entrada.polo
         selecionou = await selecionar_opcao_em_dropdown(page, alvo_curso)
@@ -885,7 +936,7 @@ async def executar_fluxo_direto(args: argparse.Namespace) -> None:
         #   step 8: click no elemento DENTRO de td.ThemeOfficeMainItem 'Atividades' (idx=15, nao idx=14)
         #   step 9: click no elemento DENTRO de tr.ThemeOfficeMenuItem 'Matricular' (idx=38, nao idx=37)
         # Resultado: navega para busca_discente.jsf
-        print("[5/9] Menu Atividades > Matricular...")
+        print("[6/9] Menu Atividades > Matricular...")
         if not await _clicar_menu_atividades_matricular(page):
             # Ultima tentativa: screenshot e dump do HTML para debug
             try:
@@ -909,7 +960,7 @@ async def executar_fluxo_direto(args: argparse.Namespace) -> None:
         #   click em input[id="formulario:checkMatricula"] (radio/checkbox de criterio matricula)
         #   fill em input[id="formulario:matriculaDiscente"]
         #   click em input[id="formulario:buscar"]
-        print("[6/9] Buscando aluno por matricula...")
+        print("[7/9] Buscando aluno por matricula...")
         await page.wait_for_load_state("domcontentloaded")
 
         check_mat = page.locator('[id="formulario:checkMatricula"]').first
@@ -983,7 +1034,7 @@ async def executar_fluxo_direto(args: argparse.Namespace) -> None:
         # --- SELECAO DO DISCENTE ---
         # Confirmado no mapeamento step 11: click em idx=46 (link na linha do aluno)
         # A linha contem a matricula; clicamos no primeiro link/imagem disponivel
-        print("[7/9] Selecionando discente na lista...")
+        print("[8/9] Selecionando discente na lista...")
         url_antes = page.url
         if not await clicar_seta_selecao_discente(page, entrada.matricula):
             # Tentar aguardar mais e repetir
@@ -1070,10 +1121,29 @@ async def executar_fluxo_direto(args: argparse.Namespace) -> None:
         # Steps 13-20: agente buscou e clicou no link da atividade na tabela de resultados
         # Step 21: clicou em botao de confirmacao (idx=37, nao idx=35 que e "Selecionar Outra Atividade")
         #          para ir a dados_registro.jsf
-        print("[8/9] Selecionando tipo de atividade e buscando componente...")
+        print("[9/11] Selecionando tipo de atividade e buscando componente...")
         await page.wait_for_load_state("domcontentloaded")
 
-        # 8a. Selecionar tipo de atividade no dropdown
+        # 8a. OBRIGATORIO — POST #6 do rastreador confirmou: o campo "form:tipoAtividade"
+        # (radio/checkbox) DEVE ser marcado antes de selecionar form:idTipoAtividade.
+        # Sem esse check, o SIGAA ignora o dropdown e nao filtra por tipo.
+        radio_tipo = page.locator('[id="form:tipoAtividade"]').first
+        try:
+            await radio_tipo.wait_for(state="visible", timeout=5000)
+            await radio_tipo.check(force=True)
+        except Exception:
+            await clicar_primeiro_visivel(
+                page,
+                [
+                    '[name="form:tipoAtividade"]',
+                    "xpath=//select[@id='form:idTipoAtividade']/ancestor::tr//input[@type='radio' or @type='checkbox']",
+                    "xpath=//td[contains(.,'Tipo de Atividade')]/preceding-sibling::td[1]//input",
+                ],
+                timeout_ms=3000,
+            )
+        await page.wait_for_timeout(300)
+
+        # 8b. Selecionar tipo de atividade — POST #6: form:idTipoAtividade=2 (ATIVIDADES COMPLEMENTARES)
         sel_tipo = page.locator('[id="form:idTipoAtividade"]').first
         try:
             await sel_tipo.wait_for(state="visible", timeout=5000)
@@ -1082,7 +1152,7 @@ async def executar_fluxo_direto(args: argparse.Namespace) -> None:
             if not await selecionar_opcao_em_dropdown(page, tipo_atividade, filtro_dropdown="tipoAtividade"):
                 raise RuntimeError(f"Nao foi possivel selecionar tipo de atividade: {tipo_atividade}")
 
-        # 8b. Clicar em Buscar Atividades
+        # 8c. Clicar em Buscar Atividades — POST #6: form:atividades=Buscar Atividades
         buscar_ativ = page.locator('[id="form:atividades"]').first
         try:
             await buscar_ativ.wait_for(state="visible", timeout=5000)
@@ -1097,16 +1167,21 @@ async def executar_fluxo_direto(args: argparse.Namespace) -> None:
         await page.wait_for_load_state("domcontentloaded")
         await page.wait_for_timeout(1000)
 
-        # 8c. Localiza a linha da atividade pelo nome e clica no link de selecao
-        # Tentar varias formas de encontrar a atividade na tabela de resultados
+        # 8d. Localiza a linha da atividade pelo nome e clica na seta de selecao.
+        # POST #7 confirmou que a seta é um input[type=image] com coordenadas .x/.y.
+        # Fallback: usar campo form:nomeAtividadeInput (confirmado no POST #6) para
+        # refinar a busca pelo nome completo da atividade.
         encontrou_atividade = False
         for tentativa in range(2):
-            # Tenta pelo nome da atividade
-            for texto_busca in [atividade_nome, atividade_nome.upper(), atividade_nome.split(" - ")[-1] if " - " in atividade_nome else atividade_nome]:
+            for texto_busca in [
+                atividade_nome,
+                atividade_nome.upper(),
+                atividade_nome.split(" - ")[-1] if " - " in atividade_nome else atividade_nome,
+            ]:
                 linha = page.locator(f"tr:has-text('{texto_busca}')").first
                 if await linha.count():
                     clicou = False
-                    for sel in ["a", "input[type='image']", "img", "input[type='submit']"]:
+                    for sel in ["input[type='image']", "a", "img", "input[type='submit']"]:
                         alvo_el = linha.locator(sel).first
                         if await alvo_el.count():
                             try:
@@ -1121,16 +1196,18 @@ async def executar_fluxo_direto(args: argparse.Namespace) -> None:
             if encontrou_atividade:
                 break
 
-            # Se nao encontrou na 1a tentativa, tenta preencher campo de codigo e buscar novamente
             if tentativa == 0:
-                print("   [INFO] Atividade nao encontrada na 1a busca, tentando com campo de codigo...")
-                # Buscar campo de codigo (geralmente input text apos os checkboxes/radios)
-                campo_codigo = page.locator("input[id*='codigoComponente'], input[id*='codigo'], input[id*='nomeComponente'], input[id*='nome']").first
+                print("   [INFO] Atividade nao encontrada; refinando busca com form:nomeAtividadeInput...")
+                # POST #6 confirma que o campo de nome e form:nomeAtividadeInput
+                campo_nome = page.locator('[id="form:nomeAtividadeInput"]').first
                 try:
-                    if await campo_codigo.count():
-                        await campo_codigo.fill(atividade_nome.split(" - ")[0].strip() if " - " in atividade_nome else atividade_nome)
-                        buscar_ativ2 = page.locator('[id="form:atividades"]').first
-                        await buscar_ativ2.click()
+                    if not await campo_nome.count():
+                        campo_nome = page.locator(
+                            'input[id*="nomeAtividade"], input[id*="nomeComponente"]'
+                        ).first
+                    if await campo_nome.count():
+                        await campo_nome.fill(atividade_nome)
+                        await page.locator('[id="form:atividades"]').first.click()
                         await page.wait_for_load_state("domcontentloaded")
                         await page.wait_for_timeout(1000)
                 except Exception:
@@ -1173,7 +1250,7 @@ async def executar_fluxo_direto(args: argparse.Namespace) -> None:
         # Confirmado no mapeamento step 22:
         #   input[id="form:senha"]                 → campo de senha
         #   input[id="form:botaoConfirmarRegistro"] → botao Confirmar
-        print("[9/9] Senha e confirmacao final...")
+        print("[11/11] Senha e confirmacao final...")
         await page.wait_for_load_state("domcontentloaded")
 
         campo_senha = page.locator('[id="form:senha"]').first

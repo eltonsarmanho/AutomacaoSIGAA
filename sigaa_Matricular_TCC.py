@@ -13,15 +13,16 @@ Fluxo:
   [9/9] Preencher Orientador (obrigatório para TCC), preencher senha e confirmar.
 
 Uso:
-  python sigaa_Matricular_TCCI.py \
-      --matricula 202416040009 \
-      --periodo 2026.1 \
+  python sigaa_Matricular_TCC.py \
+      --matricula 2024160040009 \
+      --periodo 2026.2 \
       --polo "CAMETA" \
       --componente "TCC I" \
       --orientador "ELTON SARMANHO SIQUEIRA" \
       --executar
 
 """
+
 
 import argparse
 import asyncio
@@ -128,9 +129,10 @@ async def preencher_input_por_rotulo(page, rotulo_regex: str, valor: str) -> boo
         loc = page.locator(seletor).first
         try:
             await loc.wait_for(state="visible", timeout=2000)
-            await loc.fill(valor)
-            # Para autocompletes SIGAA, eh bom disparar evento de input
-            await loc.dispatchEvent('keyup', {'key': 'Enter'})
+            await loc.click()
+            await page.keyboard.type(valor, delay=40)
+            await page.wait_for_timeout(1800)
+            await page.keyboard.press("Tab")
             await page.wait_for_timeout(1000)
             return True
         except Exception:
@@ -258,6 +260,7 @@ async def clicar_seta_selecao_discente(page, matricula: str) -> bool:
     return await clicar_primeiro_visivel(
         page,
         [
+            "input[name='form:selecionarDiscente']",
             "a[onclick*='jsfcljs']",
             "a[title*='Selecion']",
             "img[alt*='Selecion']",
@@ -664,6 +667,18 @@ async def executar_fluxo_direto(args: argparse.Namespace) -> None:
         print(f"[9/9] Selecionando tipo de atividade e buscando componente '{atividade_nome}'...")
         await page.wait_for_load_state("domcontentloaded")
 
+        # Clicar no radio form:tipoAtividade antes do dropdown (obrigatório no SIGAA)
+        radio_tipo = page.locator('[id="form:tipoAtividade"]').first
+        try:
+            await radio_tipo.wait_for(state="visible", timeout=5000)
+            await radio_tipo.check(force=True)
+        except Exception:
+            await clicar_primeiro_visivel(
+                page,
+                ['[name="form:tipoAtividade"]', 'input[type="radio"][id*="tipoAtividade"]'],
+                timeout_ms=3000,
+            )
+
         # Selecionar "TRABALHO DE CONCLUSAO DE CURSO" no Dropdown
         sel_tipo = page.locator('[id="form:idTipoAtividade"]').first
         try:
@@ -769,38 +784,35 @@ async def executar_fluxo_direto(args: argparse.Namespace) -> None:
         # Preencher Orientador (necessario para TCC)
         if entrada.orientador:
             try:
-                # O input no sigaa geralmente é autocomplete
-                # Usar xpath rigoroso: encontra o <th> que o texto exato começa com "Orientador:" e pega o input text
-                input_xpath = "xpath=//th[normalize-space(text())='Orientador:']/following-sibling::td//input[@type='text']"
-                
-                orientador_input = page.locator(input_xpath).first
+                # Seletores confirmados pelo rastreador: name='orientador.nome', id='paramAjaxDocente_1'
+                orientador_input = page.locator("input[name='orientador.nome']").first
                 if not await orientador_input.count():
-                    # Fallback robusto usando regex de ID exato de JSF (terminando em orientador, nao coorientador)
-                    orientador_input = page.locator("input[id$='ri|entador']:not([id*='coorientador']), input[name$='rientador']:not([name*='coorientador'])").first
-                    if not await orientador_input.count():
-                        # Ultimo recurso: o PRIMEIRO input de texto da div principal que nao esta escondido (Orientador vem antes de Coorientador)
-                        orientador_input = page.locator("table.formulario input[type='text']:not([id*='coorientador'])").nth(1)
+                    orientador_input = page.locator("input[id='paramAjaxDocente_1']").first
+                if not await orientador_input.count():
+                    orientador_input = page.locator(
+                        "xpath=//th[normalize-space(text())='Orientador:']/following-sibling::td//input[@type='text']"
+                    ).first
 
                 await orientador_input.wait_for(state="visible", timeout=5000)
-                await orientador_input.fill(entrada.orientador)
-                
-                # Sigaa Autocomplete
-                await page.wait_for_timeout(800)
-                await page.keyboard.press("ArrowDown")
-                await page.wait_for_timeout(500)
-                await page.keyboard.press("Enter")
-                await page.wait_for_timeout(500)
+                await orientador_input.click()
+                # keyboard.type dispara keydown/keyup reais — necessário para o AJAX do autocomplete SIGAA
+                await page.keyboard.type(entrada.orientador, delay=40)
+                # Aguardar AJAX /sigaa/ajaxDocente retornar sugestões
+                await page.wait_for_timeout(1800)
+                # Tab seleciona a primeira sugestão (confirmado pelo rastreador)
+                await page.keyboard.press("Tab")
+                await page.wait_for_timeout(1000)
             except Exception:
-                # Tenta fallback usando helpers
                 await preencher_input_por_rotulo(page, "Orientador:", entrada.orientador)
-                
-            # Prosseguir Passo (apos orientador)
+
+            # Próximo Passo confirmado pelo rastreador: form:btnConfirmacao
             await clicar_primeiro_visivel(
                 page,
                 [
+                    "input[id='form:btnConfirmacao']",
                     "input[type='submit'][value*='Próximo Passo']",
                     "input[type='submit'][value*='Proximo Passo']",
-                    "button:has-text('Próximo Passo')"
+                    "button:has-text('Próximo Passo')",
                 ],
                 timeout_ms=5000,
             )

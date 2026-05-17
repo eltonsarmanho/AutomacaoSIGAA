@@ -60,10 +60,12 @@ Navega em **Atividades → Matricular** e registra o aluno no componente indicad
 ```bash
 # Dry-run (não confirma — apenas verifica os passos)
 python sigaa_Matricular.py \
-  --matricula 202285940020 \
-  --periodo 2026.1 \
-  --polo "OEIRAS DO PARÁ" \
-  --componente "ACC I"
+  --matricula 202116040015 \
+  --periodo 2026.2 \
+  --polo "CAMETÁ" \
+  --componente "ACC II"
+
+  
 
 # Executar de verdade
 python sigaa_Matricular.py \
@@ -227,3 +229,6 @@ python processar_lote.py --executar --sem-headless
 - O script usa eventos de mouse confiáveis (`page.mouse.click`) para compatibilidade com o menu JSCookMenu do SIGAA.
 - Mudanças visuais no SIGAA podem exigir ajuste de seletores nos scripts.
 - Cada execução individual tem timeout de 5 minutos; a pausa entre entradas do lote é de 5 segundos.
+202416040009
+202416040009
+python sigaa_Matricular_TCC.py       --matricula 202416040009       --periodo 2026.2       --polo "CAMETA"       --componente "TCC I"       --orientador "ELTON SARMANHO SIQUEIRA" 

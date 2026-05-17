@@ -34,9 +34,9 @@ from dotenv import load_dotenv
 
 COMPONENTES_VALIDOS = {"TCC", "TCC I", "TCC II"}
 MAPA_COMPONENTE = {
-    "TCC": "TRABALHO DE CONCLUSAO DE CURSO",
-    "TCC I": "TRABALHO DE CONCLUSAO DE CURSO I",
-    "TCC II": "TRABALHO DE CONCLUSAO DE CURSO II",
+    "TCC": "TRABALHO DE CONCLUSÃO DE CURSO",
+    "TCC I": "TRABALHO DE CONCLUSÃO DE CURSO I",
+    "TCC II": "TRABALHO DE CONCLUSÃO DE CURSO II",
 }
 CONCEITO_PADRAO = "E"
 
@@ -444,10 +444,12 @@ async def _selecionar_discente_componente(page, matricula: str, componente_nome:
                     }
                 }
 
-                if (text.includes(matricula) && currentComponent.includes(compNorm.substring(0, 20))) {
-                    if (currentComponent === compNorm
-                        || currentComponent.includes(compNorm)
-                        || compNorm.includes(currentComponent)) {
+                if (text.includes(matricula)) {
+                    // Match exato com normalização de acentos — evita "TCC I" ser aceito ao buscar "TCC II"
+                    function normComp(s) { return s.normalize('NFD').replace(/[̀-ͯ]/g,'').toUpperCase().replace(/\s+/g,' ').trim(); }
+                    const curN = normComp(currentComponent);
+                    const cmpN = normComp(compNorm);
+                    if (curN === cmpN) {
                         const seta = tr.querySelector('input[type=image][src*=seta]')
                                   || tr.querySelector('a img[src*=seta]')
                                   || tr.querySelector('input[type=image]');
@@ -490,7 +492,7 @@ async def _selecionar_discente_componente(page, matricula: str, componente_nome:
             for i in range(count):
                 linha = linhas.nth(i)
                 text_linha = await linha.inner_text()
-                seta = linha.locator("input[type='image']").first
+                seta = linha.locator("input[type='image'], a[onclick*='jsfcljs'], a[href='#'][onclick]").first
                 if await seta.count():
                     url_antes = page.url
                     try:
@@ -570,6 +572,7 @@ async def executar_consolidacao(args: argparse.Namespace) -> None:
         raise ValueError(f"Componente inválido: {entrada.componente}")
 
     atividade_nome = MAPA_COMPONENTE[componente_upper]
+    conceito = (getattr(args, "conceito", None) or CONCEITO_PADRAO).strip().upper()
 
     base = base_sigaa_url(cfg.sigaa_url)
 
@@ -698,7 +701,7 @@ async def executar_consolidacao(args: argparse.Namespace) -> None:
         await page.wait_for_timeout(1000)
 
         # ── SELECIONAR CONCEITO ────────────────────────────────────────────
-        print(f"[-] Selecionando Conceito '{CONCEITO_PADRAO}'...")
+        print(f"[-] Selecionando Conceito '{conceito}'...")
 
         conceito_selecionado = False
         for sel_id in ["select[id*='conceito' i]", "select[id*='resultado' i]",
@@ -708,13 +711,13 @@ async def executar_consolidacao(args: argparse.Namespace) -> None:
                 sel = page.locator(sel_id).first
                 if await sel.count():
                     try:
-                        await sel.select_option(label=CONCEITO_PADRAO, timeout=3000)
+                        await sel.select_option(label=conceito, timeout=3000)
                         conceito_selecionado = True
                         break
                     except Exception:
                         pass
                     try:
-                        await sel.select_option(value=CONCEITO_PADRAO, timeout=3000)
+                        await sel.select_option(value=conceito, timeout=3000)
                         conceito_selecionado = True
                         break
                     except Exception:
@@ -724,13 +727,13 @@ async def executar_consolidacao(args: argparse.Namespace) -> None:
 
         if not conceito_selecionado:
             conceito_selecionado = await selecionar_opcao_em_dropdown(
-                page, CONCEITO_PADRAO, filtro_dropdown=None
+                page, conceito, filtro_dropdown=None
             )
 
         if not conceito_selecionado:
-            print(f"   [WARN] Nao foi possivel selecionar conceito '{CONCEITO_PADRAO}' automaticamente.")
+            print(f"   [WARN] Nao foi possivel selecionar conceito '{conceito}' automaticamente.")
         else:
-            print(f"   [OK] Conceito '{CONCEITO_PADRAO}' selecionado.")
+            print(f"   [OK] Conceito '{conceito}' selecionado.")
 
         # ── PROXIMO PASSO ──────────────────────────────────────────────────
         print("[8/8] Clicando 'Proximo Passo'...")

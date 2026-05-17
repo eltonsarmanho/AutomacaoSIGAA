@@ -1,38 +1,33 @@
 """
 lancamento_service.py — Serviço de backend para matrícula e consolidação no SIGAA.
 
-Usado pelo frontend Streamlit. Executa sempre sem janela de navegador (headless=True).
+Usado pelo frontend Streamlit. Por padrão roda em modo headless (sem janela).
 
-Exemplos de uso (dentro de contexto async — Streamlit usa asyncio):
+Exemplos de uso (contexto async):
 
-1. Para atividades complementares (ACC):
-    from lancamento_service import LancamentoService
-
-    svc_acc = LancamentoService(
+    # ACC
+    svc = LancamentoService(
         matricula="202285940020",
         polo="OEIRAS DO PARÁ",
         periodo="2026.1",
         componente="ACC I",
     )
+    resultado = await svc.matricular()
+    resultado = await svc.consolidar(conceito="E")
 
-    resultado = await svc_acc.matricular()
-    if resultado.sucesso:
-        # st.success(resultado.mensagem)
-        pass
-
-    resultado = await svc_acc.consolidar(conceito="E")
-
-2. Para Trabalho de Conclusão de Curso (TCC):
-    svc_tcc = LancamentoService(
+    # TCC
+    svc = LancamentoService(
         matricula="202416040009",
         polo="CAMETÁ",
         periodo="2026.2",
         componente="TCC I",
-        orientador="ELTON SARMANHO SIQUEIRA", # OBRIGATORIO PARA TCC
+        orientador="ELTON SARMANHO SIQUEIRA",
     )
+    resultado = await svc.matricular()
+    resultado = await svc.consolidar(conceito="E")
 
-    resultado_tcc = await svc_tcc.matricular()
-    resultado_cons_tcc = await svc_tcc.consolidar(conceito="E")
+    # Debug com janela visível
+    svc = LancamentoService(..., headless=False)
 """
 
 import asyncio
@@ -45,8 +40,6 @@ from types import SimpleNamespace
 
 @dataclass
 class ResultadoOperacao:
-    """Resultado retornado pelos métodos matricular() e consolidar()."""
-
     sucesso: bool
     mensagem: str
     detalhes: list[str] = field(default_factory=list)
@@ -57,26 +50,20 @@ class ResultadoOperacao:
 
 class LancamentoService:
     """
-    Serviço de backend que automatiza matrícula e consolidação no SIGAA via Playwright.
-
-    O navegador é executado SEMPRE em modo headless (sem janela visível), adequado
-    para uso em servidores e backends Streamlit.
+    Automatiza matrícula e consolidação no SIGAA via Playwright.
 
     Parâmetros
     ----------
-    matricula  : str  — Matrícula do aluno (ex: "202285940020")
-    polo       : str  — Nome do polo (ex: "OEIRAS DO PARA")
-    periodo    : str  — Período acadêmico (ex: "2026.1")
-    componente : str  — Sigla do componente: ACC I, ACC II, ACC III, ACC IV, TCC I, TCC II
-    executar   : bool — Se False, faz dry-run (navega, preenche, mas NÃO confirma).
-                        Padrão True (executa de fato).
-
-    Raises
-    ------
-    ValueError — se o componente informado não for válido.
+    matricula  : Matrícula do aluno (ex: "202285940020")
+    polo       : Nome do polo (ex: "OEIRAS DO PARÁ")
+    periodo    : Período acadêmico (ex: "2026.1")
+    componente : ACC I · ACC II · ACC III · ACC IV · TCC I · TCC II
+    orientador : Obrigatório apenas para TCC
+    executar   : False → dry-run (navega mas não confirma). Padrão True.
+    headless   : False → abre janela do browser (útil para depuração). Padrão True.
     """
 
-    COMPONENTES_VALIDOS = {"ACC I", "ACC II", "ACC III", "ACC IV", "TCC", "TCC I", "TCC II"}
+    COMPONENTES_VALIDOS = {"ACC I", "ACC II", "ACC III", "ACC IV", "TCC I", "TCC II"}
 
     def __init__(
         self,
@@ -84,46 +71,50 @@ class LancamentoService:
         polo: str,
         periodo: str,
         componente: str,
-        executar: bool = True,
         orientador: str | None = None,
+        executar: bool = True,
+        headless: bool = True,
     ) -> None:
         componente_upper = componente.strip().upper()
         if componente_upper not in self.COMPONENTES_VALIDOS:
             validos = ", ".join(sorted(self.COMPONENTES_VALIDOS))
             raise ValueError(
-                f"Componente inválido: '{componente}'. "
-                f"Use um de: {validos}"
+                f"Componente inválido: '{componente}'. Use um de: {validos}"
+            )
+        if componente_upper.startswith("TCC") and not orientador:
+            raise ValueError(
+                f"O campo 'orientador' é obrigatório para '{componente_upper}'."
             )
 
         self.matricula = matricula.strip()
         self.polo = polo.strip()
         self.periodo = periodo.strip()
         self.componente = componente_upper
-        self.executar = executar
         self.orientador = orientador
+        self.executar = executar
+        self.headless = headless
 
-    # ── Helpers internos ──────────────────────────────────────────────────────
+    # ── Builders de argumento ─────────────────────────────────────────────────
 
     def _args_matricular(self) -> SimpleNamespace:
-        """Constrói o namespace de argumentos esperado por executar_fluxo_direto."""
-        args_dict = {
-            "matricula": self.matricula,
-            "polo": self.polo,
-            "periodo": self.periodo,
-            "componente": self.componente,
-            "curso": None,           # usa polo para localizar o curso no dropdown
-            "atividade_nome": None,  # usa o nome padrão do MAPA_COMPONENTE
-            "executar": self.executar,
-            "headless": True,        # sem janela de navegador — obrigatório para backend
-            "manter_aberto": False,
-        }
-        if self.componente.startswith("TCC"):
-            args_dict["orientador"] = self.orientador
-            
-        return SimpleNamespace(**args_dict)
+        """Namespace esperado por sigaa_Matricular.executar_fluxo_direto
+           e sigaa_Matricular_TCC.executar_fluxo_direto."""
+        return SimpleNamespace(
+            matricula=self.matricula,
+            polo=self.polo,
+            periodo=self.periodo,
+            componente=self.componente,
+            curso=None,           # usa polo para localizar curso no dropdown
+            atividade_nome=None,  # usa nome padrão do MAPA_COMPONENTE
+            orientador=self.orientador,
+            executar=self.executar,
+            headless=self.headless,
+            manter_aberto=False,
+        )
 
     def _args_consolidar(self, conceito: str) -> SimpleNamespace:
-        """Constrói o namespace de argumentos esperado por executar_consolidacao."""
+        """Namespace esperado por sigaa_Consolidar.executar_consolidacao
+           e sigga_Consolidar_TCC.executar_consolidacao."""
         return SimpleNamespace(
             matricula=self.matricula,
             polo=self.polo,
@@ -131,8 +122,9 @@ class LancamentoService:
             componente=self.componente,
             conceito=conceito.strip().upper(),
             curso=None,
+            orientador=self.orientador,
             executar=self.executar,
-            headless=True,
+            headless=self.headless,
             manter_aberto=False,
         )
 
@@ -140,30 +132,20 @@ class LancamentoService:
 
     async def matricular(self) -> ResultadoOperacao:
         """
-        Realiza a matrícula do aluno no componente via SIGAA.
+        Matrícula do aluno no componente via SIGAA.
 
-        Fluxo interno:
-          Login → Selecionar Período → Portal Coord. Graduação →
-          Selecionar Curso/Polo → Menu Atividades > Matricular →
-          Buscar Discente → Selecionar Componente → Confirmar
+        Fluxo (ACC):
+          Login → Período → Portal Coord. Graduação → Curso/Polo →
+          Atividades > Matricular → Buscar Discente →
+          Tipo de Atividade → Buscar → Selecionar → Próximo Passo →
+          Senha → Confirmar
 
-        Returns
-        -------
-        ResultadoOperacao
-            sucesso=True  → matrícula realizada (ou simulada em dry-run)
-            sucesso=False → falha, com mensagem e detalhes do erro
+        Fluxo (TCC):
+          Mesmo fluxo, porém usa sigaa_Matricular_TCC com campo orientador.
         """
         if self.componente.startswith("TCC"):
-            # Importa script específico de TCC
             from sigaa_Matricular_TCC import executar_fluxo_direto
-            if not getattr(self, "orientador", None):
-                 return ResultadoOperacao(
-                    sucesso=False,
-                    mensagem="Erro na matrícula: O campo 'orientador' é obrigatório para matrículas de TCC.",
-                    detalhes=["O campo 'orientador' não foi fornecido no LancamentoService para um componente TCC."],
-                )
         else:
-            # Importa script genérico ACC
             from sigaa_Matricular import executar_fluxo_direto
 
         args = self._args_matricular()
@@ -186,30 +168,23 @@ class LancamentoService:
 
     async def consolidar(self, conceito: str = "E") -> ResultadoOperacao:
         """
-        Consolida a matrícula do aluno atribuindo o conceito informado.
+        Consolida a matrícula atribuindo o conceito informado.
 
-        Fluxo interno:
-          Login → Selecionar Período → Portal Coord. Graduação →
-          Selecionar Curso/Polo → Menu Atividades > Consolidar Matrículas →
-          Localizar Discente + Componente → Selecionar Conceito → Confirmar
+        Fluxo (ACC):
+          Login → Período → Portal Coord. Graduação → Curso/Polo →
+          Atividades > Consolidar Matrículas → Localizar Discente →
+          Selecionar Conceito → Próximo Passo → Senha → Confirmar
 
-        Parameters
+        Fluxo (TCC):
+          Mesmo fluxo usando sigga_Consolidar_TCC.
+
+        Parâmetros
         ----------
-        conceito : str
-            Conceito a atribuir (ex: "E", "A", "B", "C", "D"). Padrão: "E".
-
-        Returns
-        -------
-        ResultadoOperacao
-            sucesso=True  → consolidação realizada (ou simulada em dry-run)
-            sucesso=False → falha, com mensagem e detalhes do erro
+        conceito : Conceito a atribuir. Ex: "E", "A", "B", "C", "D". Padrão "E".
         """
-        
         if self.componente.startswith("TCC"):
-            # Importa script específico de TCC
             from sigga_Consolidar_TCC import executar_consolidacao
         else:
-            # Importa script genérico ACC
             from sigaa_Consolidar import executar_consolidacao
 
         args = self._args_consolidar(conceito)
@@ -220,7 +195,8 @@ class LancamentoService:
                 sucesso=True,
                 mensagem=(
                     f"Consolidação de {self.matricula} em '{self.componente}' "
-                    f"(polo: {self.polo} | período: {self.periodo} | conceito: {conceito.upper()}) {acao}."
+                    f"(polo: {self.polo} | período: {self.periodo} "
+                    f"| conceito: {conceito.upper()}) {acao}."
                 ),
             )
         except Exception as exc:
@@ -230,20 +206,12 @@ class LancamentoService:
                 detalhes=[repr(exc)],
             )
 
-    # ── Versões síncronas (utilitários / testes) ──────────────────────────────
+    # ── Versões síncronas ─────────────────────────────────────────────────────
 
     def matricular_sync(self) -> ResultadoOperacao:
-        """
-        Versão síncrona de matricular().
-        Útil para testes diretos fora de contexto async.
-        NÃO use em callbacks do Streamlit — prefira a versão async.
-        """
+        """Versão síncrona de matricular(). Não use dentro de callbacks Streamlit."""
         return asyncio.run(self.matricular())
 
     def consolidar_sync(self, conceito: str = "E") -> ResultadoOperacao:
-        """
-        Versão síncrona de consolidar().
-        Útil para testes diretos fora de contexto async.
-        NÃO use em callbacks do Streamlit — prefira a versão async.
-        """
+        """Versão síncrona de consolidar(). Não use dentro de callbacks Streamlit."""
         return asyncio.run(self.consolidar(conceito))

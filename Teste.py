@@ -1,10 +1,10 @@
 from lancamento_service import LancamentoService
 
 svc = LancamentoService(
-        matricula="202285940015",
-        polo="OEIRAS DO PARÁ",
-        periodo="2026.1",
-        componente="ACC I",
+        matricula="202116040015",
+        polo="CAMETÁ",
+        periodo="2026.2",
+        componente="ACC II",
     )
 
 resultado = svc.matricular_sync()

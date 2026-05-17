@@ -497,11 +497,12 @@ async def _selecionar_discente_componente(page, matricula: str, componente_nome:
                 }
 
                 // Linha do aluno com a matrícula
-                if (text.includes(matricula) && currentComponent.includes(compNorm.substring(0, 20))) {
-                    // Verificar match mais preciso
-                    if (currentComponent === compNorm
-                        || currentComponent.includes(compNorm)
-                        || compNorm.includes(currentComponent)) {
+                if (text.includes(matricula)) {
+                    // Match exato com normalização de acentos — evita "ACC I" ser aceito ao buscar "ACC II"
+                    function normComp(s) { return s.normalize('NFD').replace(/[̀-ͯ]/g,'').toUpperCase().replace(/\s+/g,' ').trim(); }
+                    const curN = normComp(currentComponent);
+                    const cmpN = normComp(compNorm);
+                    if (curN === cmpN) {
                         // Encontrou! Procurar a seta
                         const seta = tr.querySelector('input[type=image][src*=seta]')
                                   || tr.querySelector('a img[src*=seta]')
@@ -550,8 +551,8 @@ async def _selecionar_discente_componente(page, matricula: str, componente_nome:
                 linha = linhas.nth(i)
                 # Verificar se esta linha está sob o componente certo
                 text_linha = await linha.inner_text()
-                # A seta na linha correta
-                seta = linha.locator("input[type='image']").first
+                # POST #5 do rastreador confirmou name="form:selecionarDiscente"
+                seta = linha.locator("input[name='form:selecionarDiscente'], input[type='image'], a[onclick*='jsfcljs'], a[href='#'][onclick]").first
                 if await seta.count():
                     url_antes = page.url
                     print(f"   [DEBUG] Clicando em input[type=image] na linha {i} da matricula")
