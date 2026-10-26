@@ -21,6 +21,7 @@ Uso:
   python SIGAA_Main.py                    # dry-run (para na etapa final)
   python SIGAA_Main.py --executar         # confirma operações no SIGAA
   python SIGAA_Main.py --headless         # sem interface gráfica
+  python SIGAA_Main.py --executar --headless  # confirma operações sem interface gráfica
   python SIGAA_Main.py --sem-rastreio     # desliga screenshots/JSONL
 """
 
